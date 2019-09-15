@@ -332,7 +332,7 @@ def main():
 
     # N_FFT: defined in loader.py
     feature_size = N_FFT / 2 + 1
-
+    # encoder decoder 모델 선언   모델부분은 차 후 더 확인 및 변경
     enc = EncoderRNN(feature_size, args.hidden_size,
                      input_dropout_p=args.dropout, dropout_p=args.dropout,
                      n_layers=args.layer_size, bidirectional=args.bidirectional, rnn_cell='gru', variable_lengths=False)

@@ -17,9 +17,15 @@ limitations under the License.
 #-*- coding: utf-8 -*-
 
 def load_label(label_path):
+    '''
+        char2index : {캐릭터 : 인덱스}
+        index2char : {인덱스 : 캐릭터}
+    :param label_path:  hackathon.labels 파일이 있는 경로
+    :return:
+    '''
     char2index = dict() # [ch] = id
     index2char = dict() # [id] = ch
-    with open(label_path, 'r') as f:
+    with open(label_path, 'r',encoding="utf-8") as f:
         for no, line in enumerate(f):
             if line[0] == '#': 
                 continue

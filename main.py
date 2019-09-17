@@ -301,7 +301,7 @@ def main():
     arg("--pause", type=int, default=0)
     arg("--print_batch", type=int, default=40)
     arg('--optimizer', type=str, default='Adam') # SGD
-    arg('--scheduler', type=str, default='StepLR', help='scheduler in steplr, plateau, cosine')
+    arg('--scheduler', type=str, default='plateau', help='scheduler in cosine, steplr, plateau')
 
     args = parser.parse_args()
 
@@ -404,9 +404,13 @@ def main():
         elapsed = time.time() - start_time
 
         lr = [_['lr'] for _ in optimizer.param_groups]
-        
-        print("Epoch {}/{}  train_loss: {:.4f}  train_score: {:.4f}  eval_loss {:.4f}  eval_cer: {:.4f}  lr: {:.6f}  elapsed: {:.0f}".format(
-        epoch, args.max_epochs, train_loss, train_cer, eval_loss, eval_cer, lr[0], elapsed))
+        if args.scheduler == 'plateau':
+            scheduler.step(best_score)
+        else:
+            scheduler.step()
+
+        print("Epoch {}/{}  train_loss: {:.4f}  train_cer: {:.4f}  eval_loss {:.4f}  eval_cer: {:.4f}  lr: {:.6f}  elapsed: {:.0f}".format(
+        epoch+1, args.max_epochs, train_loss, train_cer, eval_loss, eval_cer, lr[0], elapsed))
 
         # nsml.report(True,
         #     step=epoch, train_epoch__loss=round(train_loss, 4), train_epoch__cer=round(train_cer, 4),

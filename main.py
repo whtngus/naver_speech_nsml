@@ -361,9 +361,6 @@ def main():
             wav_paths.append(os.path.join(DATASET_PATH, 'train_data', wav_path))
             script_paths.append(os.path.join(DATASET_PATH, 'train_data', script_path))
 
-    best_loss = 1e10
-    begin_epoch = 0
-
     # load all target scripts for reducing disk i/o
     target_path = os.path.join(DATASET_PATH, 'train_label')
     load_targets(target_path)
@@ -374,7 +371,10 @@ def main():
 
     train_begin = time.time()
 
+    begin_epoch = 0
+    best_loss = 1e10
     best_score = 1.0
+    best_score_epoch = 0
 
     for epoch in range(begin_epoch, args.max_epochs):
         start_time = time.time()
@@ -399,6 +399,7 @@ def main():
 
         if eval_cer < best_score:
             best_score = eval_cer
+            best_score_epoch = epoch+1
             nsml.save("best_score")
 
         elapsed = time.time() - start_time
@@ -409,12 +410,12 @@ def main():
         else:
             scheduler.step()
 
-        print("Epoch {}/{}  train_loss: {:.4f}  train_cer: {:.4f}  eval_loss {:.4f}  eval_cer: {:.4f}  lr: {:.6f}  elapsed: {:.0f}".format(
-        epoch+1, args.max_epochs, train_loss, train_cer, eval_loss, eval_cer, lr[0], elapsed))
+        print("Epoch {}/{}  train_loss: {:.4f}  train_cer: {:.4f}  eval_loss {:.4f}  eval_cer: {:.4f}  lr: {:.6f}  best_score_epoch: {}  elapsed: {:.0f}".format(
+        epoch+1, args.max_epochs, train_loss, train_cer, eval_loss, eval_cer, lr[0], best_score_epoch, elapsed))
 
-        # nsml.report(True,
-        #     step=epoch, train_epoch__loss=round(train_loss, 4), train_epoch__cer=round(train_cer, 4),
-        #     eval__loss=round(eval_loss,), eval__cer=round(eval_cer, 4))
+        nsml.report(True,
+            step=epoch, train_epoch__loss=round(train_loss, 4), train_epoch__cer=round(train_cer, 4),
+            eval__loss=round(eval_loss,), eval__cer=round(eval_cer, 4))
 
 if __name__ == "__main__":
     main()

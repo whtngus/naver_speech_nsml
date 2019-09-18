@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, ReduceLROnPlatea
 
 def build_optimizer(args, model, lr):
     if args.optimizer == 'Adam':
-        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=args.weight_decay)
+        optimizer = optim.Adam(model.parameters(), lr=lr)
     elif args.optimizer == 'RAdam':
         optimizer = RAdam(model.parameters(), lr=lr, weight_decay=args.weight_decay)
     elif args.optimizer == 'AdamW':

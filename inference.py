@@ -6,6 +6,7 @@ import time
 import math
 import wavio
 
+from collections import OrderedDict        
 import argparse
 import queue
 import shutil
@@ -91,17 +92,31 @@ def get_distance(ref_labels, hyp_labels, display=False):
 def bind_model(model, optimizer=None):
     def load(filename, **kwargs):
         state = torch.load(os.path.join(filename, 'model.pt'))
-        model.load_state_dict(state['model'])
-        if 'optimizer' in state and optimizer:
-            optimizer.load_state_dict(state['optimizer'])
+        state_dict = state['model']
+        
+        try:
+            model.load_state_dict(state_dict)
+            if 'optimizer' in state and optimizer:
+                optimizer.load_state_dict(state['optimizer'])
+        except:
+            new_state_dict = OrderedDict()
+            for k, v in state_dict.items():
+                name = k[7:] # remove 'module.' of dataparallel
+                new_state_dict[name]=v
+
+            model.load_state_dict(new_state_dict)
+            if 'optimizer' in state and optimizer:
+                optimizer.load_state_dict(state['optimizer'])
         print('Model loaded')
 
     def save(filename, **kwargs):
-        state = {
-            'model': model.state_dict(),
-            'optimizer': optimizer.state_dict()
+        state_dict = {
+            'model': model.state_dict()
         }
-        torch.save(state, os.path.join(filename, 'model.pt'))
+        if optimizer:
+            state_dict['optimizer'] = optimizer.state_dict()
+        torch.save(state_dict, os.path.join(filename, 'model.pt'))
+        print("Model Saved!")
 
     def infer(wav_path):
         model.eval()
@@ -118,8 +133,7 @@ def bind_model(model, optimizer=None):
 
         return hyp[0]
 
-    nsml.bind(save=save, load=load, infer=infer) # 'nsml.bind' function must be called at the end.
-
+    nsml.bind(save=save, load=load, infer=infer) 
 
 
 def main():
@@ -179,16 +193,22 @@ def main():
     for param in model.parameters():
         param.data.uniform_(-0.08, 0.08)
 
-    model = nn.DataParallel(model).to(device)
+    model = model.to(device)
+    # model = nn.DataParallel(model).to(device)
 
-    checkpoint = 'best_score'
-    session = 'team117/sr-hack-2019-dataset/43'
-    nsml.load(checkpoint=checkpoint, session=session)
-
-    bind_model(model, optimizer)
+    bind_model(model)
 
     if args.pause == 1: 
         nsml.paused(scope=locals())
 
-    nsml.save("best")
-    exit()
+    bTrainmode = False
+    if args.mode == 'train':
+        bTrainmode = True
+
+        nsml.load(checkpoint='best_score', session='team117/sr-hack-2019-dataset/43')
+        nsml.save('best')
+        exit()
+
+
+if __name__ == "__main__":
+    main()

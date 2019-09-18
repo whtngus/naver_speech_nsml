@@ -6,7 +6,7 @@ setup(
     name='speech_hackathon',
     version='1.0',
     install_requires=[
-        'torch>=1.2.0',
+        'torch>=1.0.1',
         'python-Levenshtein'
     ]
 )

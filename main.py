@@ -5,6 +5,7 @@ import sys
 import time
 import math
 import wavio
+
 import argparse
 import queue
 import shutil
@@ -27,6 +28,8 @@ from optimizer import build_optimizer, build_scheduler
 import nsml
 from nsml import GPU_NUM, DATASET_PATH, DATASET_NAME, HAS_DATASET
 import sys
+import warnings 
+warnings.filterwarnings('ignore')
 
 char2index = dict()
 index2char = dict()
@@ -126,13 +129,15 @@ def train(model, total_batch_size, queue, criterion, optimizer, device, train_be
         logit = model(feats, feat_lengths, scripts, teacher_forcing_ratio=teacher_forcing_ratio)
 
         logit = torch.stack(logit, dim=1).to(device)
-
+        
         y_hat = logit.max(-1)[1]
+        if args.criterion == 'CrossEntropy':
+            loss = criterion(logit.contiguous().view(-1, logit.size(-1)), target.contiguous().view(-1))
+        elif args.criterion == 'CTC':
+            loss = criterion(logit.contiguous().transpose(0,1).log_softmax(2), target.contiguous(), feat_lengths, script_lengths)
 
-        loss = criterion(logit.contiguous().view(-1, logit.size(-1)), target.contiguous().view(-1))
         total_loss += loss.item()
         total_num += sum(feat_lengths)
-
         display = random.randrange(0, 100) == 0
         dist, length = get_distance(target, y_hat, display=display)
         total_dist += dist
@@ -158,7 +163,7 @@ def train(model, total_batch_size, queue, criterion, optimizer, device, train_be
                         # elapsed,
                         epoch_elapsed, train_elapsed))
             begin = time.time()
-            
+
             nsml.report(False,
                         step=train.cumulative_batch_count, train_step__loss=total_loss/total_num,
                         train_step__cer=total_dist/total_length)
@@ -199,8 +204,9 @@ def evaluate(model, dataloader, queue, criterion, device):
 
             logit = torch.stack(logit, dim=1).to(device)
             y_hat = logit.max(-1)[1]
-
+    
             loss = criterion(logit.contiguous().view(-1, logit.size(-1)), target.contiguous().view(-1))
+
             total_loss += loss.item()
             total_num += sum(feat_lengths)
 
@@ -291,7 +297,7 @@ def main():
     arg('--dropout', type=float, default=0.2, help='dropout rate in training (default: 0.2)')
     arg('--bidirectional', action='store_true', help='use bidirectional RNN for encoder (default: False)')
     arg('--use_attention', action='store_true', help='use attention between encoder-decoder (default: False)')
-    arg('--batch_size', type=int, default=32, help='batch size in training (default: 32)')
+    arg('--batch_size', type=int, default=4, help='batch size in training (default: 32)')
     arg('--workers', type=int, default=4, help='number of workers in dataset loader (default: 4)')
     arg('--max_epochs', type=int, default=10, help='number of max epochs in training (default: 10)')
     arg('--lr', type=float, default=1e-04, help='learning rate (default: 0.0001)')
@@ -305,7 +311,7 @@ def main():
     arg("--print_batch", type=int, default=40)
     arg('--optimizer', type=str, default='Adam') # SGD
     arg('--scheduler', type=str, default='plateau', help='scheduler in cosine, steplr, plateau')
-
+    arg('--criterion', type=str, default='CrossEntropy', help='choose loss function to optimize on')
     args = parser.parse_args()
 
     char2index, index2char = label_loader.load_label('./hackathon.labels')
@@ -342,7 +348,11 @@ def main():
 
     optimizer = build_optimizer(args, model, args.lr)
     scheduler = build_scheduler(args, optimizer)
-    criterion = nn.CrossEntropyLoss(reduction='sum', ignore_index=PAD_token).to(device)
+    
+    if args.criterion == 'CrossEntropy':
+        criterion = nn.CrossEntropyLoss(reduction='sum', ignore_index=PAD_token).to(device)
+    elif args.criterion == 'CTC':
+        criterion = nn.CTCLoss()
 
     bind_model(model, optimizer)
 

@@ -37,6 +37,7 @@ import label_loader
 from loader import *
 from models import EncoderRNN, DecoderRNN, Seq2seq
 from optimizer import build_optimizer, build_scheduler
+from utils import seed_everything
 
 import nsml
 from nsml import GPU_NUM, DATASET_PATH, DATASET_NAME, HAS_DATASET
@@ -144,10 +145,10 @@ def train(model, total_batch_size, queue, criterion, optimizer, device, train_be
         logit = torch.stack(logit, dim=1).to(device)
         
         y_hat = logit.max(-1)[1]
-        if args.criterion == 'CrossEntropy':
-            loss = criterion(logit.contiguous().view(-1, logit.size(-1)), target.contiguous().view(-1))
-        elif args.criterion == 'CTC':
-            loss = criterion(logit.contiguous().transpose(0,1).log_softmax(2), target.contiguous(), feat_lengths, script_lengths)
+        # if args.criterion == 'CrossEntropy':
+        loss = criterion(logit.contiguous().view(-1, logit.size(-1)), target.contiguous().view(-1))
+        # elif args.criterion == 'CTC':
+        #     loss = criterion(logit.contiguous().transpose(0,1).log_softmax(2), target.contiguous(), feat_lengths, script_lengths)
 
         total_loss += loss.item()
         total_num += sum(feat_lengths)
@@ -252,7 +253,7 @@ def bind_model(model, optimizer=None):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         input = get_spectrogram_feature(wav_path).unsqueeze(0)
-        input = input.to(device)
+        input = input.to(device)    
 
         logit = model(input_variable=input, input_lengths=None, teacher_forcing_ratio=0)
         logit = torch.stack(logit, dim=1).to(device)
@@ -333,9 +334,8 @@ def main():
     EOS_token = char2index['</s>']
     PAD_token = char2index['_']
 
-    random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
+    seed_everything(args.seed)
+
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     device = torch.device('cuda' if args.cuda else 'cpu')
@@ -440,11 +440,11 @@ def main():
         nsml.save(epoch)
         
         print("Epoch {}/{}  train_loss: {:.4f}  train_cer: {:.4f}  eval_loss {:.4f}  eval_cer: {:.4f}  lr: {:.6f}  elapsed: {:.0f}".format(
-        epoch+1, args.max_epochs, train_loss, train_cer, eval_loss, eval_cer, lr[0], elapsed))
+        epoch, args.max_epochs, train_loss, train_cer, eval_loss, eval_cer, lr[0], elapsed))
 
         nsml.report(True,
             step=epoch, train_epoch__loss=round(train_loss, 4), train_epoch__cer=round(train_cer, 4),
-            eval__loss=round(eval_loss,), eval__cer=round(eval_cer, 4))
+            eval__loss=round(eval_loss, 4), eval__cer=round(eval_cer, 4))
 
     print("training done")
     print("Best epoch: {}  Best Score: {}".format(best_score_epoch, best_score))

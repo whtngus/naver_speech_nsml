@@ -314,6 +314,7 @@ def main():
     arg('--workers', type=int, default=4, help='number of workers in dataset loader (default: 4)')
     arg('--max_epochs', type=int, default=10, help='number of max epochs in training (default: 10)')
     arg('--lr', type=float, default=1e-04, help='learning rate (default: 0.0001)')
+    arg('--weight_decay', type=float, default=25e-6, help='optimizer weight decay')
     arg('--teacher_forcing', type=float, default=0.5, help='teacher forcing ratio in decoder (default: 0.5)')
     arg('--max_len', type=int, default=80, help='maximum characters of sentence (default: 80)')
     arg('--no_cuda', action='store_true', default=False, help='disables CUDA training')

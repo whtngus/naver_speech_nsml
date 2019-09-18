@@ -6,22 +6,23 @@ from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, ReduceLROnPlatea
 
 def build_optimizer(args, model, lr):
     if args.optimizer == 'Adam':
-        optimizer = optim.Adam(model.parameters(), lr=lr)
+        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=args.weight_decay)
     elif args.optimizer == 'RAdam':
-        optimizer = RAdam(model.parameters(), lr=lr, weight_decay=0.000025)
+        optimizer = RAdam(model.parameters(), lr=lr, weight_decay=args.weight_decay)
     elif args.optimizer == 'AdamW':
-        optimizer = AdamW(model.parameters(), lr=lr, weight_decay=0.000025)   
+        optimizer = AdamW(model.parameters(), lr=lr, weight_decay=args.weight_decay)   
     elif args.optimizer == 'SGD':
-        optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=0.025)
+        optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=args.weight_decay)
     else:
         raise NotImplementedError
     return optimizer 
 
 def build_scheduler(args, optimizer):
     if args.scheduler == 'cosine':
-        t_max = 20
+        T_mult = 1
+        T_max = 20
         eta_min = 0
-        scheduler = CosineAnnealingLR(optimizer, T_max=t_max, eta_min=eta_min)
+        scheduler = CosineAnnealingLR(optimizer, T_mult=T_mult, T_max=T_max, eta_min=eta_min)
     elif args.scheduler == 'steplr':
         step_size = 4
         gamma = 0.1

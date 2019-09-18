@@ -24,8 +24,8 @@ def build_scheduler(args, optimizer):
         eta_min = 0
         scheduler = CosineAnnealingLR(optimizer, T_mult=T_mult, T_max=T_max, eta_min=eta_min)
     elif args.scheduler == 'steplr':
-        step_size = 4
-        gamma = 0.1
+        step_size = 10
+        gamma = 0.5
         scheduler = StepLR(optimizer, step_size=step_size, gamma=gamma)
     elif args.scheduler == 'plateau':
         scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.5)

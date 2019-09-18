@@ -324,7 +324,7 @@ def main():
     arg("--pause", type=int, default=0)
     arg("--print_batch", type=int, default=40)
     arg('--optimizer', type=str, default='Adam') # SGD
-    arg('--scheduler', type=str, default='plateau', help='scheduler in cosine, steplr, plateau')
+    arg('--scheduler', type=str, default='steplr', help='scheduler in cosine, steplr, plateau')
     arg('--criterion', type=str, default='CrossEntropy', help='choose loss function to optimize on')
     args = parser.parse_args()
 
@@ -383,7 +383,6 @@ def main():
     with open(data_list, 'r') as f:
         for line in f:
             # line: "aaa.wav,aaa.label"
-
             wav_path, script_path = line.strip().split(',')
             wav_paths.append(os.path.join(DATASET_PATH, 'train_data', wav_path))
             script_paths.append(os.path.join(DATASET_PATH, 'train_data', script_path))
@@ -398,7 +397,7 @@ def main():
 
     train_begin = time.time()
 
-    begin_epoch = 0
+    begin_epoch = 1
     best_loss = 1e10
     best_score = 1.0
     best_score_epoch = 0
@@ -424,25 +423,31 @@ def main():
 
         valid_loader.join()
 
-        if eval_cer < best_score:
-            best_score = eval_cer
-            best_score_epoch = epoch+1
-            nsml.save("best_score")
-
         elapsed = time.time() - start_time
 
         lr = [_['lr'] for _ in optimizer.param_groups]
+        
         if args.scheduler == 'plateau':
             scheduler.step(best_score)
         else:
             scheduler.step()
 
-        print("Epoch {}/{}  train_loss: {:.4f}  train_cer: {:.4f}  eval_loss {:.4f}  eval_cer: {:.4f}  lr: {:.6f}  best_score_epoch: {}  elapsed: {:.0f}".format(
-        epoch+1, args.max_epochs, train_loss, train_cer, eval_loss, eval_cer, lr[0], best_score_epoch, elapsed))
+        if eval_cer < best_score:
+            best_score = eval_cer
+            best_score_epoch = epoch
+            nsml.save("best_score")
+
+        nsml.save(epoch)
+        
+        print("Epoch {}/{}  train_loss: {:.4f}  train_cer: {:.4f}  eval_loss {:.4f}  eval_cer: {:.4f}  lr: {:.6f}  elapsed: {:.0f}".format(
+        epoch+1, args.max_epochs, train_loss, train_cer, eval_loss, eval_cer, lr[0], elapsed))
 
         nsml.report(True,
             step=epoch, train_epoch__loss=round(train_loss, 4), train_epoch__cer=round(train_cer, 4),
             eval__loss=round(eval_loss,), eval__cer=round(eval_cer, 4))
+
+    print("training done")
+    print("Best epoch: {}  Best Score: {}".format(best_score_epoch, best_score))
 
 if __name__ == "__main__":
     main()

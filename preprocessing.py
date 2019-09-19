@@ -62,5 +62,6 @@ def get_mel_features(filepath, **kwargs):
                              n_fft = kwargs['N_FFT'],
                              n_mels = kwargs['n_mels'],
                              sr = kwargs['sr'])
-    feat = torch.FloatTensor(logmel)
+    logmel = torch.FloatTensor(logmel)
+    feat = torch.FloatTensor(logmel).transpose(0, 1)
     return feat

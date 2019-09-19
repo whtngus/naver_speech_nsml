@@ -80,9 +80,11 @@ class EncoderRNN(BaseRNN):
             nn.Hardtanh(0, 20, inplace=True)
         )
 
-        feature_size = math.ceil((feature_size - 11 + 1 + (5*2)) / 2)
-        feature_size = math.ceil(feature_size - 11 + 1 + (5*2))
-        feature_size *= 32
+        # feature_size = math.ceil((feature_size - 11 + 1 + (5*2)) / 2)
+        # feature_size = math.ceil(feature_size - 11 + 1 + (5*2))
+        # feature_size *= 32
+        feature_size = 1024
+        # feature_size = 2048
 
         self.rnn = self.rnn_cell(feature_size, hidden_size, n_layers,
                                  batch_first=True, bidirectional=bidirectional, dropout=dropout_p)
@@ -100,19 +102,20 @@ class EncoderRNN(BaseRNN):
             - **output** (batch, seq_len, hidden_size): variable containing the encoded features of the input sequence
             - **hidden** (num_layers * num_directions, batch, hidden_size): variable containing the features in the hidden state h
         """
-        
-        input_var = input_var.unsqueeze(1)
+        # input_var.shape = (batch_size, seq_size, feat_size)
+        input_var = input_var.unsqueeze(1) 
+        # import pdb; pdb.set_trace()
         x = self.conv(input_var)
-
+        # pdb.set_trace()
         # BxCxTxD => BxCxDxT
         x = x.transpose(1, 2)
         x = x.contiguous()
         sizes = x.size()
         x = x.view(sizes[0], sizes[1], sizes[2] * sizes[3])
-
         if self.training:
             self.rnn.flatten_parameters()
-
+        # import pdb; pdb.set_trace()
         output, hidden = self.rnn(x)
+        # pdb.set_trace()
 
         return output, hidden

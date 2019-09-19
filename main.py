@@ -34,6 +34,7 @@ import torch.optim as optim
 import Levenshtein as Lev 
 
 import label_loader
+from preprocessing import *
 from loader import *
 from models import EncoderRNN, DecoderRNN, Seq2seq
 from optimizer import build_optimizer, build_scheduler
@@ -289,10 +290,11 @@ def split_dataset(config, wav_paths, script_paths, valid_ratio=0.05):
         train_dataset_list.append(BaseDataset(
                                         wav_paths[train_begin_raw_id:train_end_raw_id],
                                         script_paths[train_begin_raw_id:train_end_raw_id],
+                                        audio_kwargs, # defined in preprocessing.py
                                         SOS_token, EOS_token))
         train_begin = train_end 
 
-    valid_dataset = BaseDataset(wav_paths[train_end_raw_id:], script_paths[train_end_raw_id:], SOS_token, EOS_token)
+    valid_dataset = BaseDataset(wav_paths[train_end_raw_id:], script_paths[train_end_raw_id:], audio_kwargs, SOS_token, EOS_token)
 
     return train_batch_num, train_dataset_list, valid_dataset
 
@@ -340,7 +342,7 @@ def main():
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     device = torch.device('cuda' if args.cuda else 'cpu')
 
-    # N_FFT: defined in loader.py
+    # N_FFT: defined in preprocessing.py
     feature_size = N_FFT / 2 + 1
 
     enc = EncoderRNN(feature_size, args.hidden_size,

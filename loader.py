@@ -13,6 +13,7 @@ limitations under the License.
 
 #-*- coding: utf-8 -*-
 
+import numpy as np
 import os
 import sys
 import math
@@ -23,16 +24,16 @@ import random
 import threading
 import logging
 from torch.utils.data import Dataset, DataLoader
-import pdb
+from joblib import Parallel, delayed
+from tqdm import tqdm
+import librosa
+from preprocessing import get_mel_features
 
 logger = logging.getLogger('root')
 FORMAT = "[%(asctime)s %(filename)s:%(lineno)s - %(funcName)s()] %(message)s"
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format=FORMAT)
 logger.setLevel(logging.INFO)
 
-PAD = 0
-N_FFT = 512
-SAMPLE_RATE = 16000
 
 target_dict = dict()
 
@@ -41,27 +42,6 @@ def load_targets(path):
         for no, line in enumerate(f):
             key, target = line.strip().split(',')
             target_dict[key] = target
-
-def get_spectrogram_feature(filepath):
-    (rate, width, sig) = wavio.readwav(filepath)
-    sig = sig.ravel()
-
-    # (N, T, 2) => N: number of frequencies, T: total number of frames used 
-    stft = torch.stft(torch.FloatTensor(sig),
-                        N_FFT,
-                        hop_length=int(0.01*SAMPLE_RATE),
-                        win_length=int(0.030*SAMPLE_RATE),
-                        window=torch.hamming_window(int(0.030*SAMPLE_RATE)),
-                        center=False,
-                        normalized=False,
-                        onesided=True)
-
-    stft = (stft[:,:,0].pow(2) + stft[:,:,1].pow(2)).pow(0.5);
-    amag = stft.numpy();
-    feat = torch.FloatTensor(amag)
-    feat = torch.FloatTensor(feat).transpose(0, 1)
-    # (T, N)
-    return feat
 
 def get_script(filepath, bos_id, eos_id):
     key = filepath.split('/')[-1].split('.')[0]
@@ -75,11 +55,43 @@ def get_script(filepath, bos_id, eos_id):
     result.append(eos_id)
     return result
 
+N_FFT = 512
+SAMPLE_RATE = 16000
+
+def get_spectrogram_feature(filepath):
+    (rate, width, sig) = wavio.readwav(filepath)
+    sig = sig.ravel()
+
+    stft = torch.stft(torch.FloatTensor(sig),
+                        N_FFT,
+                        hop_length=int(0.01*SAMPLE_RATE),
+                        win_length=int(0.030*SAMPLE_RATE),
+                        window=torch.hamming_window(int(0.030*SAMPLE_RATE)),
+                        center=False,
+                        normalized=False,
+                        onesided=True)
+
+    stft = (stft[:,:,0].pow(2) + stft[:,:,1].pow(2)).pow(0.5);
+    amag = stft.numpy();
+    feat = torch.FloatTensor(amag)
+    feat = torch.FloatTensor(feat).transpose(0, 1)
+
+    return feat
+
 class BaseDataset(Dataset):
-    def __init__(self, wav_paths, script_paths, bos_id=1307, eos_id=1308):
+    def __init__(self, wav_paths, script_paths, audio_kwargs, bos_id=1307, eos_id=1308):
         self.wav_paths = wav_paths
         self.script_paths = script_paths
         self.bos_id, self.eos_id = bos_id, eos_id
+        self.audio_kwargs = audio_kwargs
+        
+        # num_cores = 6
+
+        # self.stft_features = Parallel(n_jobs=num_cores)(
+        # delayed(lambda x: get_spectrogram_feature(path))(path) for path in tqdm(np.asarray(wav_paths)))
+
+        # self.mel_features = Parallel(n_jobs=num_cores)(
+        # delayed(lambda x: get_mel_features(path, **self.audio_kwargs))(path) for path in tqdm(np.asarray(wav_paths)))
 
     def __len__(self):
         return len(self.wav_paths)
@@ -88,8 +100,12 @@ class BaseDataset(Dataset):
         return len(self.wav_paths)
 
     def getitem(self, idx):
-        feat = get_spectrogram_feature(self.wav_paths[idx])
+        # feat = get_spectrogram_feature(self.wav_paths[idx])
+        feat = get_mel_features(self.wav_paths[idx], **self.audio_kwargs)
+        # feat = self.stft_features[idx]
+        # feat = self.mel_features[idx]
         script = get_script(self.script_paths[idx], self.bos_id, self.eos_id)
+        # import pdb; pdb.set_trace()
         return feat, script
 
 def _collate_fn(batch):
@@ -114,15 +130,19 @@ def _collate_fn(batch):
     seqs = torch.zeros(batch_size, max_seq_size, feat_size)
 
     targets = torch.zeros(batch_size, max_target_size).to(torch.long)
+    PAD = 0
     targets.fill_(PAD)
+    
     for x in range(batch_size):
         sample = batch[x]
-        tensor = sample[0]
-        target = sample[1]
+        tensor = sample[0] # tensor.shape = (seq_size, feat_size)
+        target = sample[1] 
         seq_length = tensor.size(0)
         seqs[x].narrow(0, 0, seq_length).copy_(tensor)
         targets[x].narrow(0, 0, len(target)).copy_(torch.LongTensor(target))
     return seqs, targets, seq_lengths, target_lengths
+    # seqs.shape = (batch_size, seq_size, feat_size)
+    # targets.shape = (batch_size, seq_size)
 
 class BaseDataLoader(threading.Thread):
     def __init__(self, dataset, queue, batch_size, thread_id):

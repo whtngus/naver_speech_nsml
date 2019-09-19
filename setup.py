@@ -7,6 +7,6 @@ setup(
     version='1.0',
     install_requires=[
         'torch>=1.0.1',
-        'python-Levenshtein'
-    ]
+        'python-Levenshtein',
+        'librosa==0.7.0']
 )

@@ -28,6 +28,8 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 import librosa
 from preprocessing import get_mel_features
+from transforms import get_transforms
+
 
 logger = logging.getLogger('root')
 FORMAT = "[%(asctime)s %(filename)s:%(lineno)s - %(funcName)s()] %(message)s"
@@ -79,16 +81,14 @@ def get_spectrogram_feature(filepath):
     return feat
 
 class BaseDataset(Dataset):
-    def __init__(self, wav_paths, script_paths, audio_kwargs, bos_id=1307, eos_id=1308):
+    def __init__(self, wav_paths, script_paths, audio_kwargs, transforms=None, bos_id=1307, eos_id=1308):
         self.wav_paths = wav_paths
         self.script_paths = script_paths
         self.bos_id, self.eos_id = bos_id, eos_id
         self.audio_kwargs = audio_kwargs
+        self.transforms = transforms
         
-        # num_cores = 6
-
-        # self.stft_features = Parallel(n_jobs=num_cores)(
-        # delayed(lambda x: get_spectrogram_feature(path))(path) for path in tqdm(np.asarray(wav_paths)))
+        num_cores = 6
 
         # self.mel_features = Parallel(n_jobs=num_cores)(
         # delayed(lambda x: get_mel_features(path, **self.audio_kwargs))(path) for path in tqdm(np.asarray(wav_paths)))
@@ -100,12 +100,14 @@ class BaseDataset(Dataset):
         return len(self.wav_paths)
 
     def getitem(self, idx):
-        # feat = get_spectrogram_feature(self.wav_paths[idx])
-        feat = get_mel_features(self.wav_paths[idx], **self.audio_kwargs)
-        # feat = self.stft_features[idx]
+        
+        feat = get_spectrogram_feature(self.wav_paths[idx])
+        
+        if self.transforms is not None:
+            feat = self.transforms(feat)
+        # feat = get_mel_features(self.wav_paths[idx], **self.audio_kwargs)
         # feat = self.mel_features[idx]
         script = get_script(self.script_paths[idx], self.bos_id, self.eos_id)
-        # import pdb; pdb.set_trace()
         return feat, script
 
 def _collate_fn(batch):

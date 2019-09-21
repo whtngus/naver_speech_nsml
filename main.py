@@ -33,15 +33,16 @@ import torch.nn.functional as F
 import torch.optim as optim
 import Levenshtein as Lev 
 
-import label_loader
 from preprocessing import *
+import label_loader
 from loader import *
 from models import EncoderRNN, DecoderRNN, Seq2seq
 from optimizer import build_optimizer, build_scheduler
+from transforms import get_transforms
 from utils import seed_everything
 
 import nsml
-from nsml import GPU_NUM, DATASET_PATH, DATASET_NAME, HAS_DATASET
+from nsml import GPU_NUM, DATASET_PATH, DATASET_NAME, HAS_DATASET, IS_ON_NSML
 import sys
 import warnings 
 warnings.filterwarnings('ignore')
@@ -139,7 +140,7 @@ def train(model, total_batch_size, queue, criterion, optimizer, device, train_be
 
         src_len = scripts.size(1)
         target = scripts[:, 1:]
-
+        
         model.module.flatten_parameters()
         logit = model(feats, feat_lengths, scripts, teacher_forcing_ratio=teacher_forcing_ratio)
 
@@ -234,20 +235,39 @@ def evaluate(model, dataloader, queue, criterion, device):
     logger.info('evaluate() completed')
     return total_loss / total_num, total_dist / total_length
 
-def bind_model(model, optimizer=None):
-    def load(filename, **kwargs):
-        state = torch.load(os.path.join(filename, 'model.pt'))
-        model.load_state_dict(state['model'])
-        if 'optimizer' in state and optimizer:
-            optimizer.load_state_dict(state['optimizer'])
-        print('Model loaded')
 
+def pickle_load(dir_name):
+    global audio_features
+    with open(os.path.join(dir_name, 'audio_features.pkl'), 'rb') as handle:
+        audio_features = pickle.load(handle)
+    print("pickle loaded")
+
+def bind_model(model, optimizer=None):
     def save(filename, **kwargs):
         state = {
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict()
         }
         torch.save(state, os.path.join(filename, 'model.pt'))
+
+    def load(filename, **kwargs):
+            state = torch.load(os.path.join(filename, 'model.pt'))
+            state_dict = state['model']
+            
+            try:
+                model.load_state_dict(state_dict)
+                if 'optimizer' in state and optimizer:
+                    optimizer.load_state_dict(state['optimizer'])
+            except:
+                new_state_dict = OrderedDict()
+                for k, v in state_dict.items():
+                    name = k[7:] # remove 'module.' of dataparallel
+                    new_state_dict[name]=v
+
+                model.load_state_dict(new_state_dict)
+                if 'optimizer' in state and optimizer:
+                    optimizer.load_state_dict(state['optimizer'])
+            print('Model loaded')
 
     def infer(wav_path):
         model.eval()
@@ -264,11 +284,13 @@ def bind_model(model, optimizer=None):
 
         return hyp[0]
 
-    nsml.bind(save=save, load=load, infer=infer) # 'nsml.bind' function must be called at the end.
+    nsml.bind(save=save, load=load, infer=infer)
+    # nsml.bind(save=save, load=wav_pickle_load, infer=infer) 
 
-def split_dataset(config, wav_paths, script_paths, valid_ratio=0.05):
+
+def split_dataset(config, audio_features, script_paths, valid_ratio=0.05):
     train_loader_count = config.workers
-    records_num = len(wav_paths)
+    records_num = len(audio_features)
     batch_num = math.ceil(records_num / config.batch_size)
 
     valid_batch_num = math.ceil(batch_num * valid_ratio)
@@ -279,7 +301,7 @@ def split_dataset(config, wav_paths, script_paths, valid_ratio=0.05):
     train_begin = 0
     train_end_raw_id = 0
     train_dataset_list = list()
-
+    
     for i in range(config.workers):
 
         train_end = min(train_begin + batch_num_per_train_loader, train_batch_num)
@@ -287,19 +309,30 @@ def split_dataset(config, wav_paths, script_paths, valid_ratio=0.05):
         train_begin_raw_id = train_begin * config.batch_size
         train_end_raw_id = train_end * config.batch_size
 
+        train_transform = get_transforms(spec_num_mask=2,
+                                         spec_freq_masking=0.15,
+                                         spec_time_masking=0.20,
+                                         spec_prob=0.5)
+        
         train_dataset_list.append(BaseDataset(
-                                        wav_paths[train_begin_raw_id:train_end_raw_id],
+                                        audio_features[train_begin_raw_id:train_end_raw_id],
                                         script_paths[train_begin_raw_id:train_end_raw_id],
-                                        audio_kwargs, # defined in preprocessing.py
-                                        SOS_token, EOS_token))
+                                        SOS_token, EOS_token,
+                                        audio_kwargs=audio_kwargs, 
+                                        transforms=train_transform))
         train_begin = train_end 
 
-    valid_dataset = BaseDataset(wav_paths[train_end_raw_id:], script_paths[train_end_raw_id:], audio_kwargs, SOS_token, EOS_token)
-
+    valid_dataset = BaseDataset(audio_features[train_end_raw_id:],
+                                script_paths[train_end_raw_id:],
+                                SOS_token, EOS_token,
+                                audio_kwargs=audio_kwargs,
+                                transforms=None)
+    
     return train_batch_num, train_dataset_list, valid_dataset
 
 def main():
 
+    global audio_features
     global char2index
     global index2char
     global SOS_token
@@ -313,7 +346,7 @@ def main():
     arg('--dropout', type=float, default=0.2, help='dropout rate in training (default: 0.2)')
     arg('--bidirectional', action='store_true', help='use bidirectional RNN for encoder (default: False)')
     arg('--use_attention', action='store_true', help='use attention between encoder-decoder (default: False)')
-    arg('--batch_size', type=int, default=4, help='batch size in training (default: 32)')
+    arg('--batch_size', type=int, default=2, help='batch size in training (default: 32)')
     arg('--workers', type=int, default=4, help='number of workers in dataset loader (default: 4)')
     arg('--max_epochs', type=int, default=10, help='number of max epochs in training (default: 10)')
     arg('--lr', type=float, default=1e-04, help='learning rate (default: 0.0001)')
@@ -337,7 +370,6 @@ def main():
     PAD_token = char2index['_']
 
     seed_everything(args.seed)
-
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     device = torch.device('cuda' if args.cuda else 'cpu')
@@ -393,7 +425,14 @@ def main():
     target_path = os.path.join(DATASET_PATH, 'train_label')
     load_targets(target_path)
 
-    train_batch_num, train_dataset_list, valid_dataset = split_dataset(args, wav_paths, script_paths, valid_ratio=0.05)
+    if IS_ON_NSML:
+        # nsml.load(session='team117/sr-hack-2019-dataset/168', checkpoint='stft_preprocessed', load_fn=pickle_load)
+        nsml.load(session='team117/sr-hack-2019-dataset/198', checkpoint='mel_preprocessed', load_fn=pickle_load)
+    else: # for local debugging
+        with open(os.path.join(DATASET_PATH, 'audio_features.pkl'), 'rb') as handle:
+            audio_features = pickle.load(handle)
+
+    train_batch_num, train_dataset_list, valid_dataset = split_dataset(args, audio_features, script_paths, valid_ratio=0.05)
 
     logger.info('start')
 
@@ -410,12 +449,12 @@ def main():
 
         train_loader = MultiLoader(train_dataset_list, train_queue, args.batch_size, args.workers)
         train_loader.start()
-
+        # import pdb; pdb.set_trace()
         train_loss, train_cer = train(model, train_batch_num, train_queue, criterion, optimizer, device, train_begin, args.workers, args.print_batch, args.teacher_forcing)
         logger.info('Epoch %d (Training) Loss %0.4f CER %0.4f' % (epoch, train_loss, train_cer))
-
+        # pdb.set_trace()
         train_loader.join()
-
+        
         valid_queue = queue.Queue(args.workers * 2)
         valid_loader = BaseDataLoader(valid_dataset, valid_queue, args.batch_size, 0)
         valid_loader.start()

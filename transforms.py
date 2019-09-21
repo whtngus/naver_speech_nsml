@@ -17,7 +17,7 @@ class GaussNoise:
     def __call__(self, image):
         if self.sigma_sq > 0.0:
             image = gauss_noise(image,
-                                np.random.uniform(0, self.sigma_sq))
+                                    (0, self.sigma_sq))
         return image
 
 class Compose:

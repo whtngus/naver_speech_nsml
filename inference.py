@@ -205,7 +205,7 @@ def main():
     if args.mode == 'train':
         bTrainmode = True
 
-        nsml.load(checkpoint='best_score', session='team117/sr-hack-2019-dataset/43')
+        nsml.load(checkpoint='best_score', session='team117/sr-hack-2019-dataset/111')
         nsml.save('best')
         exit()
 

@@ -29,6 +29,7 @@ from tqdm import tqdm
 import librosa
 from preprocessing import get_mel_features
 from transforms import get_transforms
+from nsml import IS_ON_NSML
 
 
 logger = logging.getLogger('root')
@@ -46,7 +47,10 @@ def load_targets(path):
             target_dict[key] = target
 
 def get_script(filepath, bos_id, eos_id):
-    key = filepath.split('/')[-1].split('.')[0]
+    if IS_ON_NSML:
+        key = filepath.split('/')[-1].split('.')[0]
+    else:
+        key = filepath.split('\\')[-1].split('.')[0]
     script = target_dict[key]
     tokens = script.split(' ')
     result = list()
@@ -61,9 +65,11 @@ N_FFT = 512
 SAMPLE_RATE = 16000
 
 def get_spectrogram_feature(filepath):
-    (rate, width, sig) = wavio.readwav(filepath)
-    sig = sig.ravel()
-
+    # (rate, width, sig) = wavio.readwav(filepath)
+    # sig = sig.ravel()
+    sig = librosa.load(filepath, SAMPLE_RATE)[0]
+    sig = librosa.effects.trim(sig, frame_length=256, hop_length=160, top_db=20)[0]
+    
     stft = torch.stft(torch.FloatTensor(sig),
                         N_FFT,
                         hop_length=int(0.01*SAMPLE_RATE),
@@ -81,32 +87,26 @@ def get_spectrogram_feature(filepath):
     return feat
 
 class BaseDataset(Dataset):
-    def __init__(self, wav_paths, script_paths, audio_kwargs, transforms=None, bos_id=1307, eos_id=1308):
-        self.wav_paths = wav_paths
+    def __init__(self, spectrogram_features, script_paths, bos_id=1307, eos_id=1308, audio_kwargs=None, transforms=None):
+        self.spectrogram_features = spectrogram_features
         self.script_paths = script_paths
         self.bos_id, self.eos_id = bos_id, eos_id
         self.audio_kwargs = audio_kwargs
         self.transforms = transforms
-        
-        num_cores = 6
-
-        # self.mel_features = Parallel(n_jobs=num_cores)(
-        # delayed(lambda x: get_mel_features(path, **self.audio_kwargs))(path) for path in tqdm(np.asarray(wav_paths)))
 
     def __len__(self):
-        return len(self.wav_paths)
+        return len(self.spectrogram_features)
 
     def count(self):
-        return len(self.wav_paths)
+        return len(self.spectrogram_features)
 
     def getitem(self, idx):
-        
-        feat = get_spectrogram_feature(self.wav_paths[idx])
-        
-        if self.transforms is not None:
-            feat = self.transforms(feat)
+        feat = self.spectrogram_features[idx]
         # feat = get_mel_features(self.wav_paths[idx], **self.audio_kwargs)
-        # feat = self.mel_features[idx]
+
+        # if self.transforms is not None:
+        #     feat = self.transforms(feat)
+
         script = get_script(self.script_paths[idx], self.bos_id, self.eos_id)
         return feat, script
 

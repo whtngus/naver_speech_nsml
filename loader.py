@@ -65,9 +65,12 @@ N_FFT = 512
 SAMPLE_RATE = 16000
 
 def get_spectrogram_feature(filepath):
-    # (rate, width, sig) = wavio.readwav(filepath)
-    # sig = sig.ravel()
-    sig = librosa.load(filepath, SAMPLE_RATE)[0]
+    (rate, width, sig) = wavio.readwav(filepath)
+    
+    sig = sig.ravel()
+    sig = sig.astype(float)
+
+    # sig = librosa.load(filepath, SAMPLE_RATE)[0]
     sig = librosa.effects.trim(sig, frame_length=256, hop_length=160, top_db=20)[0]
     
     stft = torch.stft(torch.FloatTensor(sig),
@@ -83,25 +86,32 @@ def get_spectrogram_feature(filepath):
     amag = stft.numpy();
     feat = torch.FloatTensor(amag)
     feat = torch.FloatTensor(feat).transpose(0, 1)
-
+    feat = stft_0_1(feat)
     return feat
 
+def stft_0_1(x):
+    min_val = 0.0
+    max_val = 4065378.5
+    return (x - min_val) / (max_val - min_val)
+
 class BaseDataset(Dataset):
-    def __init__(self, spectrogram_features, script_paths, bos_id=1307, eos_id=1308, audio_kwargs=None, transforms=None):
-        self.spectrogram_features = spectrogram_features
+    def __init__(self, wav_paths, script_paths, bos_id=1307, eos_id=1308, audio_kwargs=None, transforms=None):
+        self.wav_paths = wav_paths
+        # self.audio_features = audio_features
         self.script_paths = script_paths
         self.bos_id, self.eos_id = bos_id, eos_id
         self.audio_kwargs = audio_kwargs
         self.transforms = transforms
 
     def __len__(self):
-        return len(self.spectrogram_features)
+        return len(self.wav_paths)
 
     def count(self):
-        return len(self.spectrogram_features)
+        return len(self.wav_paths)
 
     def getitem(self, idx):
-        feat = self.spectrogram_features[idx]
+        # feat = self.audio_features[idx]
+        feat = get_spectrogram_feature(self.wav_paths[idx])
         # feat = get_mel_features(self.wav_paths[idx], **self.audio_kwargs)
 
         # if self.transforms is not None:

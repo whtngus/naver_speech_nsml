@@ -116,7 +116,7 @@ def main():
     
     parser = argparse.ArgumentParser(description='Speech hackathon Baseline')
     arg = parser.add_argument
-    arg('--feature_type', type=str, default='stft', help='choose which feature to preprocess') # SGD
+    arg('--feature_type', type=str, default='mel', help='choose which feature to preprocess') # SGD
     arg('--num_cores', type=int, default=6, help='number of cores') # SGD
     args = parser.parse_args()
 
@@ -150,8 +150,16 @@ def main():
         
         save_name = 'mel_preprocessed'
 
-    # save on nsml
-    nsml.save(save_name)
+
+    if is not IS_ON_NSML:
+        # local에 pickle sample 저장
+        data_list = data_list[:100]
+        with open(os.path.join(DATASET_PATH, 'audio_features.pkl'), 'wb') as handle:
+            pickle.dump(audio_features, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        
+    else:
+        save on nsml
+        nsml.save(save_name)
 
 if __name__ == "__main__":
     main()
